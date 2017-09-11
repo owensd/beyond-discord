@@ -1,0 +1,13 @@
+{
+    "manifest_version": 2,
+
+    "name": "Beyond Discord",
+    "description": "Provides integration with D&D Beyond and your own Discord server.",
+    "version": "0.1",
+
+    "content_scripts": [{
+        "css": [],
+        "js": ["beyond.js"],
+        "matches": ["https://www.dndbeyond.com/profile/*/characters/*"]
+    }]
+}
