@@ -5,9 +5,19 @@
     "description": "Provides integration with D&D Beyond and your own Discord server.",
     "version": "0.1",
 
+    "browser_action": {
+        "default_icon": "beyond.png",
+        "default_popup": "beyond.html"
+    },
+
     "content_scripts": [{
         "css": [],
         "js": ["beyond.js"],
         "matches": ["https://www.dndbeyond.com/profile/*/characters/*"]
-    }]
+    }],
+
+    "permissions": [
+        "activeTab",
+        "storage"
+    ]    
 }

@@ -5,6 +5,30 @@
 // parsing code is separated out. If you make a pull request that contains
 // any direct element usage in the non-parsing code, it will be rejected.
 
+function sanitize(url) {
+    return url.split("#").pop().split("?").pop();
+}
+
+function getSavedWebhook(callback) {
+    chrome.storage.sync.get((items) => {
+      callback(chrome.runtime.lastError ? null : items[sanitize(window.location.href)]);
+    });
+}
+
+var discord = {
+    post: function(options) {
+        var payload = {
+            "embeds": [options]
+        };
+        getSavedWebhook((webhook) => {
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", webhook, true);
+            xhr.setRequestHeader("Content-type", "application/json");
+            xhr.send(JSON.stringify(payload));
+        });
+    }
+};
+
 var ddbdice = {
     roll_die: function(die) {
         let min = 1;
@@ -70,17 +94,32 @@ var ddbparser = {
         };
     },
 
-    registerSaveRolls: function() {
-        let saves = document.getElementsByClassName("character-ability-row");
-        for (var idx = 0; idx < saves.length; idx++) {
-            let save = saves[idx];
-            let ability = ddbparser.parseAbility(save);
-            let target = save.getElementsByClassName("character-ability-save")[0];
-            let roller = document.createElement("a");
-            roller.href = "#";
-            roller.onclick = function (e) { ddb.rollSave(e.currentTarget, ability); }
-            target.parentNode.appendChild(roller);
-            roller.appendChild(target);
+    parseInitiative: function(elem) {
+        return parseInt(elem.innerText, 10);
+    },
+
+    createRoller: function(target, onclick) {
+        target.onclick = onclick;
+        target.style.cursor = "pointer";
+    },
+
+    registerAbilityRolls: function() {
+        function registerCheck(elem, ability) {
+            let target = elem.getElementsByClassName("character-ability-modifier")[0].getElementsByClassName("character-ability-stat-value")[0];
+            ddbparser.createRoller(target, function (e) { ddb.rollCheck(e.currentTarget, ability); } );
+        };
+
+        function registerSave(elem, ability) {
+            let target = elem.getElementsByClassName("character-ability-save")[0].getElementsByClassName("character-ability-stat-value")[0];
+            ddbparser.createRoller(target, function (e) { ddb.rollSave(e.currentTarget, ability); } );
+        };
+
+        let abilities = document.getElementsByClassName("character-ability-row");
+        for (var idx = 0; idx < abilities.length; idx++) {
+            let elem = abilities[idx];
+            let ability = ddbparser.parseAbility(elem);
+            registerCheck(elem, ability);
+            registerSave(elem, ability);
         };
     },
 
@@ -88,31 +127,72 @@ var ddbparser = {
         let skillItems = document.getElementsByClassName("skill-item");
         for (var idx = 0; idx < skillItems.length; idx++) {
             let skillItem = ddbparser.parseSkillItem(skillItems[idx]);
-            let target = skillItems[idx].getElementsByClassName("skill-item-modifier")[0];
-            let roller = document.createElement("a");
-            roller.href = "#";
-            roller.onclick = function (e) { ddb.rollSkill(e.currentTarget, skillItem); }
-            target.parentNode.appendChild(roller);
-            roller.appendChild(target);
+            let target = skillItems[idx].getElementsByClassName("skill-item-modifier")[0].getElementsByClassName("skill-item-modifier-value")[0];
+            ddbparser.createRoller(target, function (e) { ddb.rollSkill(e.currentTarget, skillItem); } );
         }
+    },
+
+    registerInitiativeRoll: function() {
+        let target = document.getElementsByClassName("quick-info-initiative")[0].getElementsByClassName("quick-info-item-value")[0];
+        let bonus = ddbparser.parseInitiative(target);
+        ddbparser.createRoller(target, function (e) { ddb.rollInitiative(e.currentTarget, bonus); } );
     }
 };
 
 var ddb = {
+
+    characterName: function() {
+        return document.getElementsByClassName("character-info-name")[0].textContent;
+    },
+
+    format: function(roll, mod) {
+        return "1d20 (" + roll + ") + " + mod + " = " + (roll + mod)
+    },
     
+    rollCheck: function(elem, ability) {
+        let roll = ddbdice.roll_d20();
+        var message = {
+            "title": ddb.characterName() + " makes a " + ability.name + " check",
+            "color": 6579300,
+            "description": "Check: " + ddb.format(roll, ability.mod)
+        };
+        discord.post(message);
+    },
+
     rollSave: function(elem, ability) {
         let roll = ddbdice.roll_d20();
-        alert("[" + ability.name + "] You rolled a " + roll + " + " + ability.save + " (bonus) = " + (roll + ability.save));
+        var message = {
+            "title": ddb.characterName() + " makes a " + ability.name + " save",
+            "color": 6579300,
+            "description": "Save: " + ddb.format(roll, ability.save)
+        };
+        discord.post(message);
     },
 
     rollSkill: function (elem, skill) {
         let roll = ddbdice.roll_d20();
-        alert("[" + skill.name + "(" + skill.stat + ")" + "] You rolled a " + roll + " + " + skill.bonus + " (bonus) = " + (roll + skill.bonus));
+        var message = {
+            "title": ddb.characterName() + " makes a " + skill.name + " check",
+            "color": 6579300,
+            "description": "Check: " + ddb.format(roll, skill.bonus)
+        };
+        discord.post(message);
     },
     
+    rollInitiative: function (elem, bonus) {
+        let roll = ddbdice.roll_d20();
+        var message = {
+            "title": ddb.characterName() + " makes an Initiative roll",
+            "color": 6579300,
+            "description": "Initiative: " + ddb.format(roll, bonus)
+        };
+        discord.post(message);
+    },
+
     init: function() {
-        ddbparser.registerSaveRolls();
+        ddbparser.registerAbilityRolls();
         ddbparser.registerSkillRolls();
+        ddbparser.registerInitiativeRoll();
     },
 
     ensureLoaded: function() {
